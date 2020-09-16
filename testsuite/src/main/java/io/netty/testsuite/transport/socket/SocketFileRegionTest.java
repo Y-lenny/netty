@@ -20,18 +20,19 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.FileRegion;
 import io.netty.channel.SimpleChannelInboundHandler;
+import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.channels.WritableByteChannel;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
@@ -73,6 +74,11 @@ public class SocketFileRegionTest extends AbstractSocketTest {
         run();
     }
 
+    @Test
+    public void testFileRegionCountLargerThenFile() throws Throwable {
+        run();
+    }
+
     public void testFileRegion(ServerBootstrap sb, Bootstrap cb) throws Throwable {
         testFileRegion0(sb, cb, false, true, true);
     }
@@ -91,6 +97,34 @@ public class SocketFileRegionTest extends AbstractSocketTest {
 
     public void testFileRegionVoidPromiseNotAutoRead(ServerBootstrap sb, Bootstrap cb) throws Throwable {
         testFileRegion0(sb, cb, true, false, true);
+    }
+
+    public void testFileRegionCountLargerThenFile(ServerBootstrap sb, Bootstrap cb) throws Throwable {
+        File file = File.createTempFile("netty-", ".tmp");
+        file.deleteOnExit();
+
+        final FileOutputStream out = new FileOutputStream(file);
+        out.write(data);
+        out.close();
+
+        sb.childHandler(new SimpleChannelInboundHandler<ByteBuf>() {
+            @Override
+            protected void messageReceived(ChannelHandlerContext ctx, ByteBuf msg) {
+                // Just drop the message.
+            }
+        });
+        cb.handler(new ChannelHandler() { });
+
+        Channel sc = sb.bind().sync().channel();
+        Channel cc = cb.connect(sc.localAddress()).sync().channel();
+
+        // Request file region which is bigger then the underlying file.
+        FileRegion region = new DefaultFileRegion(
+                new RandomAccessFile(file, "r").getChannel(), 0, data.length + 1024);
+
+        assertThat(cc.writeAndFlush(region).await().cause(), CoreMatchers.<Throwable>instanceOf(IOException.class));
+        cc.close().sync();
+        sc.close().sync();
     }
 
     private static void testFileRegion0(
@@ -122,9 +156,9 @@ public class SocketFileRegionTest extends AbstractSocketTest {
 
         out.close();
 
-        ChannelInboundHandler ch = new SimpleChannelInboundHandler<Object>() {
+        ChannelHandler ch = new SimpleChannelInboundHandler<Object>() {
             @Override
-            public void channelRead0(ChannelHandlerContext ctx, Object msg) throws Exception {
+            public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
             }
 
             @Override
@@ -148,8 +182,8 @@ public class SocketFileRegionTest extends AbstractSocketTest {
 
         Channel cc = cb.connect(sc.localAddress()).sync().channel();
         FileRegion region = new DefaultFileRegion(
-                new FileInputStream(file).getChannel(), startOffset, data.length - bufferSize);
-        FileRegion emptyRegion = new DefaultFileRegion(new FileInputStream(file).getChannel(), 0, 0);
+                new RandomAccessFile(file, "r").getChannel(), startOffset, data.length - bufferSize);
+        FileRegion emptyRegion = new DefaultFileRegion(new RandomAccessFile(file, "r").getChannel(), 0, 0);
 
         if (!defaultFileRegion) {
             region = new FileRegionWrapper(region);
@@ -218,7 +252,7 @@ public class SocketFileRegionTest extends AbstractSocketTest {
         }
 
         @Override
-        public void channelRead0(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        public void messageReceived(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
             byte[] actual = new byte[in.readableBytes()];
             in.readBytes(actual);
 

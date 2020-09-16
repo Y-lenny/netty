@@ -33,6 +33,7 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import org.junit.Test;
@@ -190,7 +191,7 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
         final CountDownLatch latch = new CountDownLatch(1);
 
         @Override
-        public void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) throws Exception {
+        public void messageReceived(ChannelHandlerContext ctx, ByteBuf buf) throws Exception {
             assertEquals('a', buf.readByte());
             assertFalse(buf.isReadable());
             latch.countDown();
@@ -214,7 +215,7 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
         final AtomicReference<Throwable> exception = new AtomicReference<>();
 
         @Override
-        protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
+        protected void messageReceived(ChannelHandlerContext ctx, String msg) throws Exception {
             // discard
         }
 
@@ -253,6 +254,12 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
                         fail();
                     } catch (SSLPeerUnverifiedException e) {
                         // expected
+                    } catch (UnsupportedOperationException e) {
+                        // Starting from Java15 this method throws UnsupportedOperationException as it was
+                        // deprecated before and getPeerCertificates() should be used
+                        if (PlatformDependent.javaVersion() < 15) {
+                            throw e;
+                        }
                     }
                     try {
                         session.getPeerPrincipal();

@@ -17,7 +17,7 @@
 package io.netty.handler.codec.http2;
 
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
@@ -26,6 +26,7 @@ import io.netty.util.internal.PlatformDependent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -33,18 +34,13 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 /**
  * Channel handler that allows to easily access inbound messages.
  */
-public class LastInboundHandler extends ChannelDuplexHandler {
+public class LastInboundHandler implements ChannelHandler {
     private final List<Object> queue = new ArrayList<>();
     private final Consumer<ChannelHandlerContext> channelReadCompleteConsumer;
     private Throwable lastException;
     private ChannelHandlerContext ctx;
     private boolean channelActive;
     private String writabilityStates = "";
-
-    // TODO(scott): use JDK 8's Consumer
-    public interface Consumer<T> {
-        void accept(T obj);
-    }
 
     private static final Consumer<Object> NOOP_CONSUMER = obj -> {
     };
@@ -55,7 +51,7 @@ public class LastInboundHandler extends ChannelDuplexHandler {
     }
 
     public LastInboundHandler() {
-        this(LastInboundHandler.noopConsumer());
+        this(noopConsumer());
     }
 
     public LastInboundHandler(Consumer<ChannelHandlerContext> channelReadCompleteConsumer) {
@@ -64,7 +60,6 @@ public class LastInboundHandler extends ChannelDuplexHandler {
 
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
-        super.handlerAdded(ctx);
         this.ctx = ctx;
     }
 
@@ -74,7 +69,6 @@ public class LastInboundHandler extends ChannelDuplexHandler {
             throw new IllegalStateException("channelActive may only be fired once.");
         }
         channelActive = true;
-        super.channelActive(ctx);
     }
 
     public boolean isChannelActive() {
@@ -91,17 +85,17 @@ public class LastInboundHandler extends ChannelDuplexHandler {
             throw new IllegalStateException("channelInactive may only be fired once after channelActive.");
         }
         channelActive = false;
-        super.channelInactive(ctx);
+        ctx.fireChannelInactive();
     }
 
     @Override
     public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-        if (writabilityStates == "") {
+        if ("".equals(writabilityStates)) {
             writabilityStates = String.valueOf(ctx.channel().isWritable());
         } else {
             writabilityStates += "," + ctx.channel().isWritable();
         }
-        super.channelWritabilityChanged(ctx);
+        ctx.fireChannelWritabilityChanged();
     }
 
     @Override

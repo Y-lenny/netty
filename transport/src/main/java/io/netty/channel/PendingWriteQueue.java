@@ -17,9 +17,9 @@ package io.netty.channel;
 
 import static java.util.Objects.requireNonNull;
 
-import io.netty.util.Recycler;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.PromiseCombiner;
+import io.netty.util.internal.ObjectPool;
 import io.netty.util.internal.SystemPropertyUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
@@ -127,7 +127,7 @@ public final class PendingWriteQueue {
         }
 
         ChannelPromise p = ctx.newPromise();
-        PromiseCombiner combiner = new PromiseCombiner();
+        PromiseCombiner combiner = new PromiseCombiner(ctx.executor());
         try {
             // It is possible for some of the written promises to trigger more writes. The new writes
             // will "revive" the queue, so we need to write them up until the queue is empty.
@@ -285,20 +285,15 @@ public final class PendingWriteQueue {
      * Holds all meta-data and construct the linked-list structure.
      */
     static final class PendingWrite {
-        private static final Recycler<PendingWrite> RECYCLER = new Recycler<PendingWrite>() {
-            @Override
-            protected PendingWrite newObject(Handle<PendingWrite> handle) {
-                return new PendingWrite(handle);
-            }
-        };
+        private static final ObjectPool<PendingWrite> RECYCLER = ObjectPool.newPool(PendingWrite::new);
 
-        private final Recycler.Handle<PendingWrite> handle;
+        private final ObjectPool.Handle<PendingWrite> handle;
         private PendingWrite next;
         private long size;
         private ChannelPromise promise;
         private Object msg;
 
-        private PendingWrite(Recycler.Handle<PendingWrite> handle) {
+        private PendingWrite(ObjectPool.Handle<PendingWrite> handle) {
             this.handle = handle;
         }
 

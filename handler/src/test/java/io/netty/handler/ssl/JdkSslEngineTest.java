@@ -19,7 +19,6 @@ import io.netty.handler.ssl.ApplicationProtocolConfig.Protocol;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectedListenerFailureBehavior;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectorFailureBehavior;
 import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelector;
-import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelectorFactory;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import java.security.Provider;
@@ -27,14 +26,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import io.netty.util.internal.EmptyArrays;
-import io.netty.util.internal.PlatformDependent;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
@@ -79,10 +76,10 @@ public class JdkSslEngineTest extends SSLEngineTest {
                 return null;
             }
         },
-        ALPN_JAVA9 {
+        ALPN_JAVA {
             @Override
             boolean isAvailable() {
-                return PlatformDependent.javaVersion() >= 9 && Java9SslUtils.supportsAlpn();
+                return JdkAlpnSslUtils.supportsAlpn();
             }
 
             @Override
@@ -150,7 +147,7 @@ public class JdkSslEngineTest extends SSLEngineTest {
                 params.add(new Object[]{ providerType, bufferType, ProtocolCipherCombo.tlsv12(), true });
                 params.add(new Object[]{ providerType, bufferType, ProtocolCipherCombo.tlsv12(), false });
 
-                if (PlatformDependent.javaVersion() >= 11) {
+                if (SslProvider.isTlsv13Supported(SslProvider.JDK)) {
                     params.add(new Object[] { providerType, bufferType, ProtocolCipherCombo.tlsv13(), true });
                     params.add(new Object[] { providerType, bufferType, ProtocolCipherCombo.tlsv13(), false });
                 }

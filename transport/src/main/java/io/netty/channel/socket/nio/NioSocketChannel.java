@@ -359,7 +359,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
             int nioBufferCnt = in.nioBufferCount();
 
-            // Always us nioBuffers() to workaround data-corruption.
+            // Always use nioBuffers() to workaround data-corruption.
             // See https://github.com/netty/netty/issues/2761
             switch (nioBufferCnt) {
                 case 0:
@@ -484,7 +484,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             // Multiply by 2 to give some extra space in case the OS can process write data faster than we can provide.
             int newSendBufferSize = getSendBufferSize() << 1;
             if (newSendBufferSize > 0) {
-                setMaxBytesPerGatheringWrite(getSendBufferSize() << 1);
+                setMaxBytesPerGatheringWrite(newSendBufferSize);
             }
         }
 

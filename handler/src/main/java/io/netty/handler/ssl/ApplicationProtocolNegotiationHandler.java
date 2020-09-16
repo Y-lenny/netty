@@ -18,12 +18,15 @@ package io.netty.handler.ssl;
 import static java.util.Objects.requireNonNull;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
+import io.netty.handler.codec.DecoderException;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+
+import javax.net.ssl.SSLException;
 
 /**
  * Configures a {@link ChannelPipeline} depending on the application-level protocol negotiation result of
@@ -60,7 +63,7 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
  * }
  * </pre>
  */
-public abstract class ApplicationProtocolNegotiationHandler extends ChannelInboundHandlerAdapter {
+public abstract class ApplicationProtocolNegotiationHandler implements ChannelHandler {
 
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(ApplicationProtocolNegotiationHandler.class);
@@ -80,25 +83,43 @@ public abstract class ApplicationProtocolNegotiationHandler extends ChannelInbou
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (evt instanceof SslHandshakeCompletionEvent) {
-            ctx.pipeline().remove(this);
-
             SslHandshakeCompletionEvent handshakeEvent = (SslHandshakeCompletionEvent) evt;
-            if (handshakeEvent.isSuccess()) {
-                SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
-                if (sslHandler == null) {
-                    throw new IllegalStateException("cannot find a SslHandler in the pipeline (required for " +
-                                                    "application-level protocol negotiation)");
+            try {
+                if (handshakeEvent.isSuccess()) {
+                    SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
+                    if (sslHandler == null) {
+                        throw new IllegalStateException("cannot find an SslHandler in the pipeline (required for "
+                                + "application-level protocol negotiation)");
+                    }
+                    String protocol = sslHandler.applicationProtocol();
+                    configurePipeline(ctx, protocol != null ? protocol : fallbackProtocol);
+                } else {
+                    // if the event is not produced because of an successful handshake we will receive the same
+                    // exception in exceptionCaught(...) and handle it there. This will allow us more fine-grained
+                    // control over which exception we propagate down the ChannelPipeline.
+                    //
+                    // See https://github.com/netty/netty/issues/10342
                 }
-                String protocol = sslHandler.applicationProtocol();
-                configurePipeline(ctx, protocol != null? protocol : fallbackProtocol);
-            } else {
-                handshakeFailure(ctx, handshakeEvent.cause());
+            } catch (Throwable cause) {
+                exceptionCaught(ctx, cause);
+            } finally {
+                ctx.fireUserEventTriggered(evt);
+                // Handshake failures are handled in exceptionCaught(...).
+                if (handshakeEvent.isSuccess()) {
+                    removeSelfIfPresent(ctx);
+                }
             }
+        } else {
+            ctx.fireUserEventTriggered(evt);
         }
-
-        ctx.fireUserEventTriggered(evt);
     }
 
+    private void removeSelfIfPresent(ChannelHandlerContext ctx) {
+        ChannelPipeline pipeline = ctx.pipeline();
+        if (pipeline.context(this) != null) {
+            pipeline.remove(this);
+        }
+    }
     /**
      * Invoked on successful initial SSL/TLS handshake. Implement this method to configure your pipeline
      * for the negotiated application-level protocol.
@@ -119,7 +140,17 @@ public abstract class ApplicationProtocolNegotiationHandler extends ChannelInbou
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        Throwable wrapped;
+        if (cause instanceof DecoderException && ((wrapped = cause.getCause()) instanceof SSLException)) {
+            try {
+                handshakeFailure(ctx, wrapped);
+                return;
+            } finally {
+                removeSelfIfPresent(ctx);
+            }
+        }
         logger.warn("{} Failed to select the application-level protocol:", ctx.channel(), cause);
+        ctx.fireExceptionCaught(cause);
         ctx.close();
     }
 }

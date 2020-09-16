@@ -17,6 +17,7 @@ package io.netty.util.internal;
 import static java.util.Objects.requireNonNull;
 
 import java.util.Collection;
+import java.util.Objects;
 
 /**
  * A grab-bag of useful utility methods.
@@ -32,10 +33,7 @@ public final class ObjectUtil {
      */
     @Deprecated
     public static <T> T checkNotNull(T arg, String text) {
-        if (arg == null) {
-            throw new NullPointerException(text);
-        }
-        return arg;
+        return Objects.requireNonNull(arg, text);
     }
 
     /**
@@ -53,11 +51,11 @@ public final class ObjectUtil {
      * Checks that the given argument is strictly positive. If it is not, throws {@link IllegalArgumentException}.
      * Otherwise, returns the argument.
      */
-    public static long checkPositive(long i, String name) {
-        if (i <= 0) {
-            throw new IllegalArgumentException(name + ": " + i + " (expected: > 0)");
+    public static long checkPositive(long l, String name) {
+        if (l <= 0) {
+            throw new IllegalArgumentException(name + ": " + l + " (expected: > 0)");
         }
-        return i;
+        return l;
     }
 
     /**
@@ -75,11 +73,11 @@ public final class ObjectUtil {
      * Checks that the given argument is positive or zero. If it is not, throws {@link IllegalArgumentException}.
      * Otherwise, returns the argument.
      */
-    public static long checkPositiveOrZero(long i, String name) {
-        if (i < 0) {
-            throw new IllegalArgumentException(name + ": " + i + " (expected: >= 0)");
+    public static long checkPositiveOrZero(long l, String name) {
+        if (l < 0) {
+            throw new IllegalArgumentException(name + ": " + l + " (expected: >= 0)");
         }
-        return i;
+        return l;
     }
 
     /**
